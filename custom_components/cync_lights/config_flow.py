@@ -122,40 +122,41 @@ class CyncUserData:
             return await resp.json()
 
      async def authenticate(self, username: str, password: str) -> dict:
-            """
-            Authenticate with the Cync API and get an access token.
+        """
+        Authenticate with the Cync API and get an access token.
     
-            :param username: The user's Cync username
-            :param password: The user's Cync password
-            :return: Dictionary with authentication result
-            :raises HomeAssistantError: If authentication fails
-            """
-            auth_data = {'corp_id': "1007d2ad150c4000", 'email': username, 'password': password}
-            async with aiohttp.ClientSession() as session:
-                async with session.post(API_AUTH, json=auth_data) as resp:
-                    if resp.status == 200:
-                        response = await resp.json()
-                        self.access_token = response.get('access_token')
-                        self.refresh_token = response.get('refresh_token')
-                        self.user_id = response.get('user_id')
-                        return {'authorized': True}
-                    elif resp.status == 400:
-                        # Assuming this status code means 2FA is required
-                        return {'authorized': False, 'two_factor_code_required': True}
-                    else:
-                        content = await resp.text()
-                        raise HomeAssistantError(f"Authentication failed: {content}")
+        :param username: The user's Cync username
+        :param password: The user's Cync password
+        :return: Dictionary with authentication result
+        :raises HomeAssistantError: If authentication fails
+        """
+        auth_data = {'corp_id': "1007d2ad150c4000", 'email': username, 'password': password}
+         
+        async with aiohttp.ClientSession() as session:
+            async with session.post(API_AUTH, json=auth_data) as resp:
+                if resp.status == 200:
+                    response = await resp.json()
+                    self.access_token = response.get('access_token')
+                    self.refresh_token = response.get('refresh_token')
+                    self.user_id = response.get('user_id')
+                    return {'authorized': True}
+                elif resp.status == 400:
+                    # Assuming this status code means 2FA is required
+                    return {'authorized': False, 'two_factor_code_required': True}
+                else:
+                    content = await resp.text()
+                    raise HomeAssistantError(f"Authentication failed: {content}")
     
-        async def auth_two_factor(self, two_factor_code: str) -> dict:
-            """
-            Authenticate with a two-factor code.
+    async def auth_two_factor(self, two_factor_code: str) -> dict:
+        """
+        Authenticate with a two-factor code.
     
-            :param two_factor_code: The two-factor authentication code
-            :return: Dictionary with authentication result
-            :raises HomeAssistantError: If two-factor authentication fails
-            """
-            if not self.username or not self.password:
-                raise HomeAssistantError("User not authenticated for two-factor step")
+        :param two_factor_code: The two-factor authentication code
+        :return: Dictionary with authentication result
+        :raises HomeAssistantError: If two-factor authentication fails
+        """
+        if not self.username or not self.password:
+            raise HomeAssistantError("User not authenticated for two-factor step")
     
             two_factor_data = {
                 'corp_id': "1007d2ad150c4000",
@@ -164,17 +165,18 @@ class CyncUserData:
                 'two_factor': two_factor_code,
                 'resource': "abcdefghijklmnop"
             }
-        async with aiohttp.ClientSession() as session:
-            async with session.post(API_2FACTOR_AUTH, json=two_factor_data) as resp:
-                if resp.status == 200:
-                    response = await resp.json()
-                    self.access_token = response.get('access_token')
-                    self.refresh_token = response.get('refresh_token')
-                    self.user_id = response.get('user_id')
-                    return {'authorized': True, 'access_token': self.access_token}
-                else:
-                    content = await resp.text()
-                    raise HomeAssistantError(f"Two-factor authentication failed: {content}")
+            
+    async with aiohttp.ClientSession() as session:
+        async with session.post(API_2FACTOR_AUTH, json=two_factor_data) as resp:
+            if resp.status == 200:
+                response = await resp.json()
+                self.access_token = response.get('access_token')
+                self.refresh_token = response.get('refresh_token')
+                self.user_id = response.get('user_id')
+                return {'authorized': True, 'access_token': self.access_token}
+            else:
+                content = await resp.text()
+                raise HomeAssistantError(f"Two-factor authentication failed: {content}")
 
 class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle the configuration flow for Cync Room Lights."""
