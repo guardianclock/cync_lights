@@ -252,7 +252,12 @@ class CyncOptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(step_id="auth", data_schema=STEP_USER_DATA_SCHEMA, errors=errors)
 
 async def async_step_two_factor_code(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-    """Handle two-factor authentication in re-authentication process."""
+    """
+    Handle two-factor authentication in re-authentication process.
+
+    :param user_input: Two-factor code or None if first call
+    :return: FlowResult to continue or show form with errors
+    """
     if user_input is None:
         return self.async_show_form(step_id="two_factor_code", data_schema=STEP_TWO_FACTOR_CODE)
 
