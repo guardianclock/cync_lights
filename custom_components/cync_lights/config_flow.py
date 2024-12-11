@@ -54,40 +54,30 @@ class CyncUserData:
         return await self._api_request(url, "GET")
 
     async def authenticate(self, username: str, password: str) -> dict:
-        """Authenticate with the Cync API and get an access token."""
         auth_data = {'corp_id': "1007d2ad150c4000", 'email': username, 'password': password}
-        try:
-            response = await self._api_request(API_AUTH, "POST", auth_data)
-            self.username, self.password = username, password
-            self.access_token = response.get('access_token')
-            self.refresh_token = response.get('refresh_token')
-            self.user_id = response.get('user_id')
-            return {'authorized': True}
-        except HomeAssistantError as e:
-            if "400" in str(e):
-                return {'authorized': False, 'two_factor_code_required': True}
-            raise
+        async with aiohttp.ClientSession() as session:
+            async with session.post(API_AUTH, json=auth_data) as resp:
+                if resp.status == 200:
+                    return {'authorized': True, 'access_token': (await resp.json())['access_token']}
+                elif resp.status == 400:  # Assuming this means 2FA is required
+                    # Here you might need to make an additional call to request the 2FA code
+                    request_code_data = {'corp_id': "1007d2ad150c4000", 'email': username, 'local_lang': "en-us"}
+                    await session.post(API_REQUEST_CODE, json=request_code_data)
+                    return {'authorized': False, 'two_factor_code_required': True}
+                else:
+                    return {'authorized': False, 'two_factor_code_required': False}
 
     async def auth_two_factor(self, two_factor_code: str) -> dict:
-        """Authenticate with a two-factor code."""
-        if not all([self.username, self.password]):
-            raise HomeAssistantError("User not authenticated for two-factor step")
-
-        two_factor_data = {
-            'corp_id': "1007d2ad150c4000",
-            'email': self.username,
-            'password': self.password,
-            'two_factor': two_factor_code,
-            'resource': "abcdefghijklmnop"
-        }
-        try:
-            response = await self._api_request(API_2FACTOR_AUTH, "POST", two_factor_data)
-            self.access_token = response.get('access_token')
-            self.refresh_token = response.get('refresh_token')
-            self.user_id = response.get('user_id')
-            return {'authorized': True}
-        except HomeAssistantError:
-            return {'authorized': False}
+        if not self.username:  # Assuming username is set in authenticate
+            raise InvalidAuth("User not authenticated for two-factor step")
+        
+        two_factor_data = {'corp_id': "1007d2ad150c4000", 'email': self.username, 'two_factor': two_factor_code, 'resource': "abcdefghijklmnop"}
+        async with aiohttp.ClientSession() as session:
+            async with session.post(API_2FACTOR_AUTH, json=two_factor_data) as resp:
+                if resp.status == 200:
+                    return {'authorized': True, 'access_token': (await resp.json())['access_token']}
+                else:
+                    return {'authorized': False}
 
 async def cync_login(hub, user_input: dict[str, Any]) -> dict[str, Any]:
     """Authenticate user with Cync service using username and password."""
