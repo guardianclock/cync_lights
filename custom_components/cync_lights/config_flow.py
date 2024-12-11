@@ -9,25 +9,19 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.core import callback
-from .const import DOMAIN, API_AUTH, API_2FACTOR_AUTH  # Assuming these are defined
-import aiohttp  # Added missing import
+import aiohttp  # Moved here for completeness
+from .const import DOMAIN, API_AUTH, API_2FACTOR_AUTH  # Assuming these are defined in const.py
 
 _LOGGER = logging.getLogger(__name__)
 
-# Schema for the user step, requiring username and password
-STEP_USER_DATA_SCHEMA = vol.Schema(
-    {
-        vol.Required("username"): str,
-        vol.Required("password"): str,       
-    }
-)
+STEP_USER_DATA_SCHEMA = vol.Schema({
+    vol.Required("username"): str,
+    vol.Required("password"): str,
+})
 
-# Schema for two-factor authentication, requiring a code
-STEP_TWO_FACTOR_CODE = vol.Schema(
-    {
-        vol.Required("two_factor_code"): str,
-    }
-)
+STEP_TWO_FACTOR_CODE = vol.Schema({
+    vol.Required("two_factor_code"): str,
+})
 
 class TwoFactorCodeRequired(HomeAssistantError):
     """Error to indicate two-factor authentication is required."""
@@ -35,59 +29,7 @@ class TwoFactorCodeRequired(HomeAssistantError):
 class InvalidAuth(HomeAssistantError):
     """Error to indicate there is invalid authentication."""
 
-async def cync_login(hub, user_input: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input"""
-    
-    response = await hub.authenticate(user_input["username"], user_input["password"])
-    if response['authorized']:
-        return {
-            'title': 'cync_lights_' + user_input['username'],
-            'data': {
-                'cync_credentials': hub.auth_code,
-                'user_input': user_input
-            }
-        }
-    else:
-        if response.get('two_factor_code_required', False):
-            raise TwoFactorCodeRequired
-        else:
-            raise InvalidAuth
-
-async def submit_two_factor_code(hub, user_input: dict[str, Any]) -> dict[str, Any]:
-    """
-    Submit two-factor authentication code to get access token.
-
-    :param hub: CyncUserData object holding preliminary authentication state
-    :param user_input: Dictionary containing two-factor code
-    :return: Dictionary with authentication details including the access token
-    :raises: InvalidAuth if the two-factor code is incorrect
-    """
-    response = await hub.auth_two_factor(user_input["two_factor_code"])
-    
-    if response is None:
-        raise InvalidAuth("Two-factor authentication failed or returned None")
-    
-    if response.get('access_token'):
-        hub.access_token = response['access_token']
-        hub.refresh_token = response.get('refresh_token', None)  # Assuming refresh_token might not always be present
-        hub.user_id = response.get('user_id', None)  # Same for user_id
-        return {
-            'title': 'cync_lights_' + hub.username,
-            'data': {
-                'cync_credentials': {
-                    'access_token': response['access_token'],
-                    'refresh_token': response.get('refresh_token'),
-                    'user_id': response.get('user_id')
-                },
-                'user_input': {'username': hub.username, 'password': hub.password}
-            }
-        }
-    else:
-        raise InvalidAuth("Invalid two-factor code or unexpected response")
-
 class CyncUserData:
-    """Handles user data and API interactions for Cync service."""
-
     def __init__(self):
         self.username = None
         self.password = None
@@ -95,56 +37,40 @@ class CyncUserData:
         self.refresh_token = None
         self.user_id = None
 
-    async def get_devices(self):
-        """
-        Fetch devices from the Cync API.
-
-        :return: JSON response containing device information
-        :raises: HomeAssistantError if the API call fails
-        """
-        headers = {
-            "access-token": self.access_token
-        }
-        url = f"/v2/user/{self.user_id}/subscribe/devices?version=0"
-        async with self.hass.client_session.get(url, headers=headers) as resp:
-            if resp.status != 200:
-                raise HomeAssistantError(f"Failed to fetch devices: {resp.status}")
-            return await resp.json()
-
-    async def authenticate(self, username: str, password: str) -> dict:
-        """
-        Authenticate with the Cync API and get an access token.
-
-        :param username: The user's Cync username
-        :param password: The user's Cync password
-        :return: Dictionary with authentication result
-        :raises HomeAssistantError: If authentication fails
-        """
-        auth_data = {'corp_id': "1007d2ad150c4000", 'email': username, 'password': password}
+    async def _api_request(self, url, method, data=None):
+        """Helper method for making API requests."""
+        headers = {"Access-Token": self.access_token} if self.access_token else {}
         async with aiohttp.ClientSession() as session:
-            async with session.post(API_AUTH, json=auth_data) as resp:
+            async with getattr(session, method.lower())(url, json=data, headers=headers) as resp:
                 if resp.status == 200:
-                    response = await resp.json()
-                    self.access_token = response.get('access_token')
-                    self.refresh_token = response.get('refresh_token')
-                    self.user_id = response.get('user_id')
-                    return {'authorized': True}
-                elif resp.status == 400:
-                    # Assuming this status code means 2FA is required
-                    return {'authorized': False, 'two_factor_code_required': True}
+                    return await resp.json()
                 else:
                     content = await resp.text()
-                    raise HomeAssistantError(f"Authentication failed: {content}")
+                    raise HomeAssistantError(f"API request failed with status {resp.status}: {content}")
+
+    async def get_devices(self):
+        """Fetch devices from the Cync API."""
+        url = f"/v2/user/{self.user_id}/subscribe/devices?version=0"
+        return await self._api_request(url, "GET")
+
+    async def authenticate(self, username: str, password: str) -> dict:
+        """Authenticate with the Cync API and get an access token."""
+        auth_data = {'corp_id': "1007d2ad150c4000", 'email': username, 'password': password}
+        try:
+            response = await self._api_request(API_AUTH, "POST", auth_data)
+            self.username, self.password = username, password
+            self.access_token = response.get('access_token')
+            self.refresh_token = response.get('refresh_token')
+            self.user_id = response.get('user_id')
+            return {'authorized': True}
+        except HomeAssistantError as e:
+            if "400" in str(e):
+                return {'authorized': False, 'two_factor_code_required': True}
+            raise
 
     async def auth_two_factor(self, two_factor_code: str) -> dict:
-        """
-        Authenticate with a two-factor code.
-
-        :param two_factor_code: The two-factor authentication code
-        :return: Dictionary with authentication result
-        :raises HomeAssistantError: If two-factor authentication fails
-        """
-        if not self.username or not self.password:
+        """Authenticate with a two-factor code."""
+        if not all([self.username, self.password]):
             raise HomeAssistantError("User not authenticated for two-factor step")
 
         two_factor_data = {
@@ -154,21 +80,52 @@ class CyncUserData:
             'two_factor': two_factor_code,
             'resource': "abcdefghijklmnop"
         }
-        async with aiohttp.ClientSession() as session:
-            async with session.post(API_2FACTOR_AUTH, json=two_factor_data) as resp:
-                if resp.status == 200:
-                    response = await resp.json()
-                    self.access_token = response.get('access_token')
-                    self.refresh_token = response.get('refresh_token')
-                    self.user_id = response.get('user_id')
-                    return {'authorized': True, 'access_token': self.access_token}
-                else:
-                    content = await resp.text()
-                    raise HomeAssistantError(f"Two-factor authentication failed: {content}")
+        try:
+            response = await self._api_request(API_2FACTOR_AUTH, "POST", two_factor_data)
+            self.access_token = response.get('access_token')
+            self.refresh_token = response.get('refresh_token')
+            self.user_id = response.get('user_id')
+            return {'authorized': True}
+        except HomeAssistantError:
+            return {'authorized': False}
+
+async def cync_login(hub, user_input: dict[str, Any]) -> dict[str, Any]:
+    """Authenticate user with Cync service using username and password."""
+    response = await hub.authenticate(user_input["username"], user_input["password"])
+    
+    if response is None or not response.get('authorized'):
+        if response.get('two_factor_code_required'):
+            raise TwoFactorCodeRequired("Two-factor authentication required")
+        raise InvalidAuth("Authentication failed or returned None")
+    
+    hub.username = user_input["username"]
+    return {
+        'title': 'cync_lights_' + user_input['username'],
+        'data': {
+            'user_input': user_input
+        }
+    }
+
+async def submit_two_factor_code(hub, user_input: dict[str, Any]) -> dict[str, Any]:
+    """Submit two-factor authentication code to get access token."""
+    response = await hub.auth_two_factor(user_input["two_factor_code"])
+    
+    if not response.get('authorized'):
+        raise InvalidAuth("Invalid two-factor code or unexpected response")
+    
+    return {
+        'title': 'cync_lights_' + hub.username,
+        'data': {
+            'cync_credentials': {
+                'access_token': hub.access_token,
+                'refresh_token': hub.refresh_token,
+                'user_id': hub.user_id
+            },
+            'user_input': {'username': hub.username, 'password': hub.password}
+        }
+    }
 
 class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle the configuration flow for Cync Room Lights."""
-
     def __init__(self):
         self.cync_hub = CyncUserData()
         self.data = {}
@@ -176,19 +133,10 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """
-        Handle initial user input for username and password.
-
-        :param user_input: User's input or None for first call
-        :return: FlowResult to proceed with the configuration process
-        """
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Handle initial user input for username and password."""
         if user_input is None:
-            return self.async_show_form(
-                step_id="user", data_schema=STEP_USER_DATA_SCHEMA
-            )
+            return self.async_show_form(step_id="user", data_schema=STEP_USER_DATA_SCHEMA)
 
         errors = {}
 
@@ -198,30 +146,19 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_two_factor_code()
         except InvalidAuth:
             errors["base"] = "invalid_auth"
-        except Exception as e:  # pylint: disable=broad-except
+        except Exception as e:
             _LOGGER.error(f"Error during login: {str(type(e).__name__)} - {str(e)}")
             errors["base"] = "unknown"
         else:
             self.data = info
             return await self.async_step_two_factor_code()
 
-        return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
-        )
+        return self.async_show_form(step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors)
 
-    async def async_step_two_factor_code(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """
-        Handle two-factor authentication step.
-
-        :param user_input: User's two-factor code or None for first call
-        :return: FlowResult to continue the configuration process
-        """
+    async def async_step_two_factor_code(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Handle two-factor authentication step."""
         if user_input is None:
-            return self.async_show_form(
-                step_id="two_factor_code", data_schema=STEP_TWO_FACTOR_CODE
-            )
+            return self.async_show_form(step_id="two_factor_code", data_schema=STEP_TWO_FACTOR_CODE)
 
         errors = {}
 
@@ -230,26 +167,17 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             info["data"]["cync_config"] = await self.cync_hub.get_devices()
         except InvalidAuth:
             errors["base"] = "invalid_auth"
-        except Exception as e:  # pylint: disable=broad-except
+        except Exception as e:
             _LOGGER.error(f"Error during two factor authentication: {str(type(e).__name__)} - {str(e)}")
             errors["base"] = "unknown"
         else:
             self.data = info
             return await self.async_step_select_switches()
 
-        return self.async_show_form(
-            step_id="two_factor_code", data_schema=STEP_TWO_FACTOR_CODE, errors=errors
-        )
+        return self.async_show_form(step_id="two_factor_code", data_schema=STEP_TWO_FACTOR_CODE, errors=errors)
 
-    async def async_step_select_switches(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """
-        Allow user to select which devices to integrate.
-
-        :param user_input: User's device selection or None for first call
-        :return: FlowResult to finalize setup or show form for selection
-        """
+    async def async_step_select_switches(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Allow user to select which devices to integrate."""
         if user_input is not None:
             self.options = user_input
             return await self._async_finish_setup()
@@ -260,28 +188,17 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.error("Device list not available; skipping device selection")
             return await self._async_finish_setup()
 
-        switches_data_schema = vol.Schema(
-            {
-                vol.Optional(
-                    "devices",
-                    description={"suggested_value": list(devices.keys()) if devices else []},
-                ): cv.multi_select({device_id: f'{device.get("name", "Unnamed Device")}' for device_id, device in devices.items()}),
-            }
-        )
+        switches_data_schema = vol.Schema({
+            vol.Optional("devices", description={"suggested_value": list(devices.keys()) if devices else []}):
+                cv.multi_select({device_id: f'{device.get("name", "Unnamed Device")}' for device_id, device in devices.items()}),
+        })
         
         return self.async_show_form(step_id="select_switches", data_schema=switches_data_schema)
 
-    async def _async_finish_setup(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """
-        Finalize the setup by creating or updating the config entry.
-
-        :param user_input: Optional user input for final setup steps
-        :return: FlowResult indicating successful setup or abort
-        """
+    async def _async_finish_setup(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Finalize the setup by creating or updating the config entry."""
         existing_entry = await self.async_set_unique_id(self.data['title'])
-        if not existing_entry:              
+        if not existing_entry:
             return self.async_create_entry(title=self.data["title"], data=self.data["data"], options=self.options)
         else:
             self.hass.config_entries.async_update_entry(existing_entry, data=self.data['data'], options=self.options)
@@ -295,47 +212,28 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return CyncOptionsFlowHandler(config_entry)
 
 class CyncOptionsFlowHandler(config_entries.OptionsFlow):
-    """Handles options flow for Cync Room Lights integration."""
-
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow with existing config entry."""
         self.entry = config_entry
         self.cync_hub = CyncUserData()
         self.data = {}
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """
-        Initial step of options flow, asking if re-authentication is needed.
-
-        :param user_input: User's choice or None for first call
-        :return: FlowResult to proceed to next step or show form
-        """
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Initial step of options flow, asking if re-authentication is needed."""
         if user_input is not None:
             if user_input['re-authenticate'] == "No":
                 return await self.async_step_select_switches()
             else:
                 return await self.async_step_auth()
 
-        data_schema = vol.Schema(
-            {
-                vol.Required(
-                    "re-authenticate", default="No"): vol.In(["Yes", "No"]),
-            }
-        )
+        data_schema = vol.Schema({
+            vol.Required("re-authenticate", default="No"): vol.In(["Yes", "No"]),
+        })
 
         return self.async_show_form(step_id="init", data_schema=data_schema)
 
-    async def async_step_auth(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """
-        Re-authentication step in options flow.
-
-        :param user_input: User's input for re-authentication or None if first call
-        :return: FlowResult to proceed or show form with errors
-        """
+    async def async_step_auth(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Re-authentication step in options flow."""
         errors = {}
 
         try:
@@ -344,84 +242,16 @@ class CyncOptionsFlowHandler(config_entries.OptionsFlow):
             return await self.async_step_two_factor_code()
         except InvalidAuth:
             errors["base"] = "invalid_auth"
-        except Exception as e:  # pylint: disable=broad-except
+        except Exception as e:
             _LOGGER.error(f"Error during re-authentication: {str(type(e).__name__)} - {str(e)}")
             errors["base"] = "unknown"
         else:
             self.data = info
             return await self.async_step_two_factor_code()
 
-        return self.async_show_form(
-            step_id="auth", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
-        )
+        return self.async_show_form(step_id="auth", data_schema=STEP_USER_DATA_SCHEMA, errors=errors)
 
-    async def async_step_two_factor_code(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """
-        Handle two-factor authentication in re-authentication process.
-
-        :param user_input: Two-factor code or None if first call
-        :return: FlowResult to continue or show form with errors
-        """
+    async def async_step_two_factor_code(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Handle two-factor authentication in re-authentication process."""
         if user_input is None:
-            return self.async_show_form(
-                step_id="two_factor_code", data_schema=STEP_TWO_FACTOR_CODE
-            )
-
-        errors = {}
-
-        try:
-            info = await submit_two_factor_code(self.cync_hub, user_input)
-            info["data"]["cync_config"] = await self.cync_hub.get_devices()
-        except InvalidAuth:
-            errors["base"] = "invalid_auth"
-        except Exception as e:  # pylint: disable=broad-except
-            _LOGGER.error(f"Error during two factor authentication: {str(type(e).__name__)} - {str(e)}")
-            errors["base"] = "unknown"
-        else:
-            self.data = info
-            return await self.async_step_select_switches()
-
-        return self.async_show_form(
-            step_id="two_factor_code", data_schema=STEP_TWO_FACTOR_CODE, errors=errors
-        )
-
-    async def async_step_select_switches(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """
-        Manage options for device selection in the options flow.
-
-        :param user_input: User's device selection or None if showing the form for the first time
-        :return: FlowResult to finalize the options or show the selection form
-        """
-        # Update the config entry if new data is available and different from what's already stored
-        if "data" in self.data and self.data["data"] != self.entry.data:
-            self.hass.config_entries.async_update_entry(self.entry, data=self.data["data"])
-
-        if user_input is not None:
-            # If user input is provided, finalize the options update
-            return self.async_create_entry(title="", data=user_input)
-
-        try:
-            # Attempt to fetch the devices from the existing config data
-            devices = self.entry.data.get("cync_config", {})
-        except KeyError:
-            # Log an error if device data is not available, but continue with an empty selection
-            _LOGGER.error("Device list not available in existing config; skipping device selection")
-            return self.async_create_entry(title="", data={})
-
-        # Create a schema for device selection
-        switches_data_schema = vol.Schema(
-            {
-                vol.Optional(
-                    "devices",
-                    description={"suggested_value": list(devices.keys()) if devices else []},
-                ): cv.multi_select({device_id: f'{device.get("name", "Unnamed Device")}' for device_id, device in devices.items()}),
-            }
-        )
-        
-        # Show the form for device selection
-        return self.async_show_form(step_id="select_switches", data_schema=switches_data_schema)
-   
+            return self.async_show_form(step_id="two_factor_code", data
