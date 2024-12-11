@@ -10,7 +10,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.core import callback
 import aiohttp  # Moved here for completeness
-from .const import DOMAIN, API_AUTH, API_REQUEST_CODE, API_2FACTOR_AUTH  # Assuming these are defined in const.py
+from .const import DOMAIN, API_AUTH, API_2FACTOR_AUTH, API_REQUEST_CODE
 
 _LOGGER = logging.getLogger(__name__)
 
