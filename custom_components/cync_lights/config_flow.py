@@ -28,64 +28,72 @@ STEP_TWO_FACTOR_CODE = vol.Schema(
     }
 )
 
+class TwoFactorCodeRequired(HomeAssistantError):
+    """Error to indicate two-factor authentication is required."""
+
+class InvalidAuth(HomeAssistantError):
+    """Error to indicate there is invalid authentication."""
+
 async def cync_login(hub, user_input: dict[str, Any]) -> dict[str, Any]:
     """
     Authenticate user with Cync service using username and password.
 
     :param hub: CyncUserData object to handle authentication
     :param user_input: Dictionary containing username and password
-    :return: Dictionary with authentication details if successful, raises exceptions otherwise
+    :return: Dictionary with preliminary authentication details or raises exceptions
+    :raises TwoFactorCodeRequired: If two-factor authentication is required
     """
     response = await hub.authenticate(user_input["username"], user_input["password"])
-    if response.get('access_token'):
-        # Update the hub with the new authentication tokens
-        hub.access_token = response['access_token']
-        hub.refresh_token = response['refresh_token']
-        hub.user_id = response['user_id']
+    
+    if response is None:
+        raise InvalidAuth("Authentication failed or returned None")
+    
+    if response.get('two_factor_code_required'):
+        raise TwoFactorCodeRequired("Two-factor authentication required")
+    elif response.get('access_token'):
+        # This should not happen if access token is only available post 2FA
+        raise InvalidAuth("Unexpected access token without 2FA")
+    else:
+        # Here, you might want to store some preliminary data like username for the next step
+        hub.username = user_input["username"]
         return {
             'title': 'cync_lights_' + user_input['username'],
             'data': {
-                'cync_credentials': {
-                    'access_token': response['access_token'],
-                    'refresh_token': response['refresh_token'],
-                    'user_id': response['user_id']
-                },
                 'user_input': user_input
             }
         }
-    else:
-        if response.get('two_factor_code_required'):
-            raise TwoFactorCodeRequired("Two-factor authentication required")
-        else:
-            raise InvalidAuth("Invalid username or password")
 
 async def submit_two_factor_code(hub, user_input: dict[str, Any]) -> dict[str, Any]:
     """
-    Submit two-factor authentication code.
+    Submit two-factor authentication code to get access token.
 
-    :param hub: CyncUserData object holding authentication state
+    :param hub: CyncUserData object holding preliminary authentication state
     :param user_input: Dictionary containing two-factor code
-    :return: Dictionary with updated authentication details if successful
+    :return: Dictionary with authentication details including the access token
     :raises: InvalidAuth if the two-factor code is incorrect
     """
     response = await hub.auth_two_factor(user_input["two_factor_code"])
+    
+    if response is None:
+        raise InvalidAuth("Two-factor authentication failed or returned None")
+    
     if response.get('access_token'):
         hub.access_token = response['access_token']
-        hub.refresh_token = response['refresh_token']
-        hub.user_id = response['user_id']
+        hub.refresh_token = response.get('refresh_token', None)  # Assuming refresh_token might not always be present
+        hub.user_id = response.get('user_id', None)  # Same for user_id
         return {
             'title': 'cync_lights_' + hub.username,
             'data': {
                 'cync_credentials': {
                     'access_token': response['access_token'],
-                    'refresh_token': response['refresh_token'],
-                    'user_id': response['user_id']
+                    'refresh_token': response.get('refresh_token'),
+                    'user_id': response.get('user_id')
                 },
                 'user_input': {'username': hub.username, 'password': hub.password}
             }
         }
     else:
-        raise InvalidAuth("Invalid two-factor code")
+        raise InvalidAuth("Invalid two-factor code or unexpected response")
 
 class CyncUserData:
     """Handles user data and API interactions for Cync service."""
@@ -149,7 +157,6 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         try:
             info = await cync_login(self.cync_hub, user_input)
-            info["data"]["cync_config"] = await self.cync_hub.get_devices()
         except TwoFactorCodeRequired:
             return await self.async_step_two_factor_code()
         except InvalidAuth:
@@ -159,7 +166,7 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors["base"] = "unknown"
         else:
             self.data = info
-            return await self.async_step_select_switches()
+            return await self.async_step_two_factor_code()
 
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
@@ -296,7 +303,6 @@ class CyncOptionsFlowHandler(config_entries.OptionsFlow):
 
         try:
             info = await cync_login(self.cync_hub, self.entry.data['user_input'])
-            info["data"]["cync_config"] = await self.cync_hub.get_devices()
         except TwoFactorCodeRequired:
             return await self.async_step_two_factor_code()
         except InvalidAuth:
@@ -306,7 +312,7 @@ class CyncOptionsFlowHandler(config_entries.OptionsFlow):
             errors["base"] = "unknown"
         else:
             self.data = info
-            return await self.async_step_select_switches()
+            return await self.async_step_two_factor_code()
 
         return self.async_show_form(
             step_id="auth", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
@@ -350,10 +356,6 @@ class CyncOptionsFlowHandler(config_entries.OptionsFlow):
         """
         Manage options for device selection in the options flow.
 
-        This method allows users to select which devices should be controlled or 
-        monitored by Home Assistant. It updates the existing config entry with 
-        new selections if they have changed.
-
         :param user_input: User's device selection or None if showing the form for the first time
         :return: FlowResult to finalize the options or show the selection form
         """
@@ -385,3 +387,4 @@ class CyncOptionsFlowHandler(config_entries.OptionsFlow):
         
         # Show the form for device selection
         return self.async_show_form(step_id="select_switches", data_schema=switches_data_schema)
+   
