@@ -82,6 +82,7 @@ class CyncUserData:
 async def cync_login(hub, user_input: dict[str, Any]) -> dict[str, Any]:
     """Authenticate user with Cync service using username and password."""
     response = await hub.authenticate(user_input["username"], user_input["password"])
+    _LOGGER.debug(f"Authentication response: {response}")
     
     if response is None or not response.get('authorized'):
         if response.get('two_factor_code_required'):
