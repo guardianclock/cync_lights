@@ -140,11 +140,13 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle initial user input for username and password."""
         if user_input is None:
             return self.async_show_form(step_id="user", data_schema=STEP_USER_DATA_SCHEMA)
-
+    
         errors = {}
-
+    
         try:
             info = await cync_login(self.cync_hub, user_input)
+            # Fetch device config only if login is successful
+            info["data"]["cync_config"] = await self.cync_hub.get_cync_config()
         except TwoFactorCodeRequired:
             return await self.async_step_two_factor_code()
         except InvalidAuth:
@@ -154,8 +156,10 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors["base"] = "unknown"
         else:
             self.data = info
-            return await self.async_step_two_factor_code()
-
+            # Go to the next step which should be selecting devices or finishing setup, not 2FA
+            return await self.async_step_select_switches()
+    
+        # If there are errors, show the form again
         return self.async_show_form(step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors)
 
     async def async_step_two_factor_code(self, user_input: dict[str, Any] | None = None) -> FlowResult:
