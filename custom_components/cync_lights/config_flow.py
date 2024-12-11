@@ -9,7 +9,7 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.core import callback
-from .const import DOMAIN
+from .const import DOMAIN, API_AUTH, API_2FACTOR_AUTH  # Assuming these are defined
 import aiohttp  # Added missing import
 
 _LOGGER = logging.getLogger(__name__)
