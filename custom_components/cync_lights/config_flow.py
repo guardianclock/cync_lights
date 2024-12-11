@@ -70,26 +70,26 @@ class CyncUserData:
     async def auth_two_factor(self, two_factor_code: str) -> dict:
         if not self.username:
             raise InvalidAuth("User not authenticated for two-factor step")
-    
+        
         two_factor_data = {
-            'corp_id': "1007d2ad150c4000", 
-            'email': self.username, 
-            'two_factor': two_factor_code, 
+            'corp_id': "1007d2ad150c4000",
+            'email': self.username,
+            'two_factor': two_factor_code,
             'resource': "abcdefghijklmnop"
         }
         async with aiohttp.ClientSession() as session:
             async with session.post(API_2FACTOR_AUTH, json=two_factor_data) as resp:
-                response = await resp.json()
-                # Log the JSON response
-                _LOGGER.debug(f"2FA Authentication Response: {response}")
-                
                 if resp.status == 200:
-                    # Store or handle the access token or other necessary data
-                    self.access_token = response.get('access_token')
-                    return {'authorized': True, 'access_token': self.access_token}
+                    response = await resp.json()
+                    if 'authorized' in response and response['authorized']:
+                        # Assuming the response contains these fields
+                        self.access_token = response.get('access_token')
+                        self.user_id = response.get('user_id')
+                        self.auth_code = response.get('auth_code')  # Check if this field exists in the response
+                        return {'authorized': True}
+                    else:
+                        return {'authorized': False}  # If authorized key exists but is False
                 else:
-                    # Log the status and any error message for debugging
-                    _LOGGER.error(f"2FA Authentication Failed with status {resp.status}, Response: {response}")
                     return {'authorized': False}
 
 async def cync_login(hub, user_input: dict[str, Any]) -> dict[str, Any]:
