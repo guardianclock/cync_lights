@@ -36,33 +36,22 @@ class InvalidAuth(HomeAssistantError):
     """Error to indicate there is invalid authentication."""
 
 async def cync_login(hub, user_input: dict[str, Any]) -> dict[str, Any]:
-    """
-    Authenticate user with Cync service using username and password.
-
-    :param hub: CyncUserData object to handle authentication
-    :param user_input: Dictionary containing username and password
-    :return: Dictionary with preliminary authentication details or raises exceptions
-    :raises TwoFactorCodeRequired: If two-factor authentication is required
-    """
+    """Validate the user input"""
+    
     response = await hub.authenticate(user_input["username"], user_input["password"])
-    
-    if response is None:
-        raise InvalidAuth("Authentication failed or returned None")
-    
-    if response.get('two_factor_code_required'):
-        raise TwoFactorCodeRequired("Two-factor authentication required")
-    elif response.get('access_token'):
-        # This should not happen if access token is only available post 2FA
-        raise InvalidAuth("Unexpected access token without 2FA")
-    else:
-        # Here, you might want to store some preliminary data like username for the next step
-        hub.username = user_input["username"]
+    if response['authorized']:
         return {
             'title': 'cync_lights_' + user_input['username'],
             'data': {
+                'cync_credentials': hub.auth_code,
                 'user_input': user_input
             }
         }
+    else:
+        if response.get('two_factor_code_required', False):
+            raise TwoFactorCodeRequired
+        else:
+            raise InvalidAuth
 
 async def submit_two_factor_code(hub, user_input: dict[str, Any]) -> dict[str, Any]:
     """
