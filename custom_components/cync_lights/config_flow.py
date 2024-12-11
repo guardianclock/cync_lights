@@ -251,7 +251,23 @@ class CyncOptionsFlowHandler(config_entries.OptionsFlow):
 
         return self.async_show_form(step_id="auth", data_schema=STEP_USER_DATA_SCHEMA, errors=errors)
 
-    async def async_step_two_factor_code(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Handle two-factor authentication in re-authentication process."""
-        if user_input is None:
-            return self.async_show_form(step_id="two_factor_code", data
+async def async_step_two_factor_code(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    """Handle two-factor authentication in re-authentication process."""
+    if user_input is None:
+        return self.async_show_form(step_id="two_factor_code", data_schema=STEP_TWO_FACTOR_CODE)
+
+    errors = {}
+
+    try:
+        info = await submit_two_factor_code(self.cync_hub, user_input)
+        info["data"]["cync_config"] = await self.cync_hub.get_devices()
+    except InvalidAuth:
+        errors["base"] = "invalid_auth"
+    except Exception as e:
+        _LOGGER.error(f"Error during two factor authentication: {str(type(e).__name__)} - {str(e)}")
+        errors["base"] = "unknown"
+    else:
+        self.data = info
+        return await self.async_step_select_switches()
+
+    return self.async_show_form(step_id="two_factor_code", data_schema=STEP_TWO_FACTOR_CODE, errors=errors)
