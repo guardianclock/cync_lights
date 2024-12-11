@@ -68,15 +68,28 @@ class CyncUserData:
                     return {'authorized': False, 'two_factor_code_required': False}
 
     async def auth_two_factor(self, two_factor_code: str) -> dict:
-        if not self.username:  # Assuming username is set in authenticate
+        if not self.username:
             raise InvalidAuth("User not authenticated for two-factor step")
-        
-        two_factor_data = {'corp_id': "1007d2ad150c4000", 'email': self.username, 'two_factor': two_factor_code, 'resource': "abcdefghijklmnop"}
+    
+        two_factor_data = {
+            'corp_id': "1007d2ad150c4000", 
+            'email': self.username, 
+            'two_factor': two_factor_code, 
+            'resource': "abcdefghijklmnop"
+        }
         async with aiohttp.ClientSession() as session:
             async with session.post(API_2FACTOR_AUTH, json=two_factor_data) as resp:
+                response = await resp.json()
+                # Log the JSON response
+                _LOGGER.debug(f"2FA Authentication Response: {response}")
+                
                 if resp.status == 200:
-                    return {'authorized': True, 'access_token': (await resp.json())['access_token']}
+                    # Store or handle the access token or other necessary data
+                    self.access_token = response.get('access_token')
+                    return {'authorized': True, 'access_token': self.access_token}
                 else:
+                    # Log the status and any error message for debugging
+                    _LOGGER.error(f"2FA Authentication Failed with status {resp.status}, Response: {response}")
                     return {'authorized': False}
 
 async def cync_login(hub, user_input: dict[str, Any]) -> dict[str, Any]:
