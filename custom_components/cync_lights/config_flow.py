@@ -305,3 +305,4 @@ class CyncOptionsFlowHandler(config_entries.OptionsFlow):
                     "devices",
                     description={"suggested_value": list(devices.keys()) if devices else []},
                 ): cv
+            }
