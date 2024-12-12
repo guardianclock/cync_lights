@@ -9,11 +9,12 @@ from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
-API_AUTH = "https://api.gelighting.com/v2/user_auth"
+# From your original script
+API_AUTH = "https://api.gelighting.com/v2/user_auth"  # Should be in const.py
+API_2FACTOR_AUTH = "https://api.gelighting.com/v2/user_auth/two_factor"  # Should be in const.py
 API_REQUEST_CODE = "https://api.gelighting.com/v2/two_factor/email/verifycode"
-API_2FACTOR_AUTH = "https://api.gelighting.com/v2/user_auth/two_factor"
+API_DEVICE_INFO = "https://api.gelighting.com/v2/product/1607d2ad150cb2001607d2ad150cb201/device/803132983/property"
 API_DEVICES = "https://api.gelighting.com/v2/user/{user}/subscribe/devices"
-API_DEVICE_INFO = "https://api.gelighting.com/v2/product/{product_id}/device/{device_id}/property"
 
 Capabilities = {
     "ONOFF":[1,5,6,7,8,9,10,11,13,14,15,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,48,49,51,52,53,54,55,56,57,58,59,61,62,63,64,65,66,67,68,80,81,82,83,85,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,158,159,160,161,162,163,164,165,169,170],
@@ -693,48 +694,12 @@ class CyncAmbientLightSensor:
             self._update_callback()
 
 class CyncUserData:
-
     def __init__(self):
-        self.username = ''
-        self.password = ''
-        self.auth_code = None
-        self.user_credentials = {}
-
-    async def authenticate(self,username,password):
-        """Authenticate with the API and get a token."""
-        self.username = username
-        self.password = password
-        auth_data = {'corp_id': "1007d2ad150c4000", 'email': self.username, 'password': self.password}
-        async with aiohttp.ClientSession() as session:
-            async with session.post(API_AUTH, json=auth_data) as resp:
-                if resp.status == 200:
-                    self.user_credentials = await resp.json()
-                    login_code = bytearray.fromhex('13000000') + (10 + len(self.user_credentials['authorize'])).to_bytes(1,'big') + bytearray.fromhex('03') + self.user_credentials['user_id'].to_bytes(4,'big') + len(self.user_credentials['authorize']).to_bytes(2,'big') + bytearray(self.user_credentials['authorize'],'ascii') + bytearray.fromhex('0000b4')
-                    self.auth_code = [int.from_bytes([byt],'big') for byt in login_code]
-                    return {'authorized':True}
-                elif resp.status == 400:
-                    request_code_data = {'corp_id': "1007d2ad150c4000", 'email': self.username, 'local_lang': "en-us"}
-                    async with aiohttp.ClientSession() as session:
-                        async with session.post(API_REQUEST_CODE,json=request_code_data) as resp:
-                            if resp.status == 200:                    
-                                return {'authorized':False,'two_factor_code_required':True}
-                            else:
-                                return {'authorized':False,'two_factor_code_required':False}
-                else:
-                    return {'authorized':False,'two_factor_code_required':False}
-
-    async def auth_two_factor(self, code):
-        """Authenticate with 2 Factor Code."""
-        two_factor_data = {'corp_id': "1007d2ad150c4000", 'email': self.username,'password': self.password, 'two_factor': code, 'resource':"abcdefghijklmnop"}
-        async with aiohttp.ClientSession() as session:
-            async with session.post(API_2FACTOR_AUTH,json=two_factor_data) as resp:
-                if resp.status == 200:
-                    self.user_credentials = await resp.json()
-                    login_code = bytearray.fromhex('13000000') + (10 + len(self.user_credentials['authorize'])).to_bytes(1,'big') + bytearray.fromhex('03') + self.user_credentials['user_id'].to_bytes(4,'big') + len(self.user_credentials['authorize']).to_bytes(2,'big') + bytearray(self.user_credentials['authorize'],'ascii') + bytearray.fromhex('0000b4')
-                    self.auth_code = [int.from_bytes([byt],'big') for byt in login_code]
-                    return {'authorized':True}
-                else:
-                    return {'authorized':False}
+        self.username = None
+        self.password = None
+        self.access_token = None
+        self.refresh_token = None
+        self.user_id = None
 
     async def get_cync_config(self):
         home_devices = {}
@@ -744,7 +709,7 @@ class CyncUserData:
         rooms = {}
         homes = await self._get_homes()
         for home in homes:
-            home_info = await self._get_home_properties(home['product_id'], home['id'])
+            home_info = await self._get_home_properties()
             if home_info.get('groupsArray',False) and home_info.get('bulbsArray',False) and len(home_info['groupsArray']) > 0 and len(home_info['bulbsArray']) > 0:
                 home_id = str(home['id'])
                 bulbs_array_length = max([((device['deviceID'] % home['id']) % 1000) + (int((device['deviceID'] % home['id']) / 1000)*256) for device in home_info['bulbsArray']]) + 1
@@ -797,13 +762,14 @@ class CyncUserData:
                                 devices[home_devices[home_id][id]]['room_name'] = room['displayName']
                                 if 'switch_controller' not in devices[home_devices[home_id][id]] and devices[home_devices[home_id][id]].get('ONOFF',False):
                                     devices[home_devices[home_id][id]]['switch_controller'] = room_controller
-                            rooms[room_id] = {'name':room['displayName'],
-                                'mesh_id' : room['groupID'], 
-                                'room_controller' : room_controller,
-                                'home_name' : home['name'], 
-                                'switches' : [home_devices[home_id][(i%1000)+(int(i/1000)*256)] for i in room.get('deviceIDArray',[]) if devices[home_devices[home_id][(i%1000)+(int(i/1000)*256)]].get('ONOFF',False)],
-                                'isSubgroup' : room.get('isSubgroup',False),
-                                'subgroups' : [home_id + '-' + str(subgroup) for subgroup in room.get('subgroupIDArray',[])]
+                            rooms[room_id] = {
+                                'name': room['displayName'],
+                                'mesh_id': room['groupID'], 
+                                'room_controller': room_controller,
+                                'home_name': home['name'], 
+                                'switches': [home_devices[home_id][(i%1000)+(int(i/1000)*256)] for i in room.get('deviceIDArray',[]) if devices[home_devices[home_id][(i%1000)+(int(i/1000)*256)]].get('ONOFF',False)],
+                                'isSubgroup': room.get('isSubgroup',False),
+                                'subgroups': [home_id + '-' + str(subgroup) for subgroup in room.get('subgroupIDArray',[])]
                             }
                     for room,room_info in rooms.items():
                         if not room_info.get("isSubgroup",False) and len(subgroups := room_info.get("subgroups",[]).copy()) > 0:
@@ -812,27 +778,75 @@ class CyncUserData:
                                     rooms[subgroup]["parent_room"] = room_info["name"]
                                 else:
                                     room_info['subgroups'].pop(room_info['subgroups'].index(subgroup))
-                                    
-        if len(rooms) == 0 or len(devices) == 0 or len(home_controllers) == 0 or len(home_devices) == 0 or len(switchID_to_homeID) == 0:
-            raise InvalidCyncConfiguration
-        else:
-            return {'rooms':rooms, 'devices':devices, 'home_devices':home_devices, 'home_controllers':home_controllers, 'switchID_to_homeID':switchID_to_homeID}
+                                        
+
+        return {'rooms':rooms, 'devices':devices, 'home_devices':home_devices, 'home_controllers':home_controllers, 'switchID_to_homeID':switchID_to_homeID}
 
     async def _get_homes(self):
         """Get a list of devices for a particular user."""
         headers = {'Access-Token': self.user_credentials['access_token']}
         async with aiohttp.ClientSession() as session:
             async with session.get(API_DEVICES.format(user=self.user_credentials['user_id']), headers=headers) as resp:
-                response  = await resp.json()
-                return response
-
-    async def _get_home_properties(self, product_id, device_id):
-        """Get properties for a single device."""
-        headers = {'Access-Token': self.user_credentials['access_token']}
-        async with aiohttp.ClientSession() as session:
-            async with session.get(API_DEVICE_INFO.format(product_id=product_id, device_id=device_id), headers=headers) as resp:
+                _LOGGER.info (f"Getting homes for {self.user_credentials['user_id']}")
+                if resp.status != 200:
+                    raise HomeAssistantError(f"Failed to fetch homes: {resp.status}")
                 response = await resp.json()
                 return response
+
+    async def _get_home_properties(self):
+        """Get properties for a single device."""
+        _LOGGER.info(f"Getting properties for ")
+        url = API_DEVICE_INFO
+        _LOGGER.debug(f"Requesting URL: {url}")
+        headers = {'Access-Token': self.user_credentials['access_token']}
+        _LOGGER.debug(f"Using headers: {headers}")
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as resp:
+                _LOGGER.debug(f"Response status: {resp.status}")
+                if resp.status != 200:
+                    content = await resp.text()
+                    _LOGGER.error(f"Failed to fetch device properties: {resp.status} - Content: {content}")
+                    raise HomeAssistantError(f"Failed to fetch device properties: {resp.status}")
+                response = await resp.json()
+                _LOGGER.info(f"Device properties response: {response}")
+                return response
+
+    async def authenticate(self, username: str, password: str) -> Dict[str, Any]:
+        """Authenticate with the API and get a token."""
+        self.username = username
+        self.password = password
+        auth_data = {'corp_id': "1007d2ad150c4000", 'email': self.username, 'password': self.password}
+        async with aiohttp.ClientSession() as session:
+            async with session.post(API_AUTH, json=auth_data) as resp:
+                _LOGGER.debug(f"Authentication response status: {resp.status}")
+                if resp.status == 200:
+                    self.user_credentials = await resp.json()
+                    login_code = bytearray.fromhex('13000000') + (10 + len(self.user_credentials['authorize'])).to_bytes(1,'big') + bytearray.fromhex('03') + self.user_credentials['user_id'].to_bytes(4,'big') + len(self.user_credentials['authorize']).to_bytes(2,'big') + bytearray(self.user_credentials['authorize'],'ascii') + bytearray.fromhex('0000b4')
+                    self.auth_code = [int.from_bytes([byt],'big') for byt in login_code]
+                    return {'authorized': True}
+                elif resp.status == 400:
+                    request_code_data = {'corp_id': "1007d2ad150c4000", 'email': self.username, 'local_lang': "en-us"}
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post(API_REQUEST_CODE, json=request_code_data) as resp:
+                            _LOGGER.debug(f"2FA request code response status: {resp.status}")
+                            if resp.status == 200:                    
+                                return {'authorized': False, 'two_factor_code_required': True}
+                            else:
+                                return {'authorized': False, 'two_factor_code_required': False}
+
+    async def auth_two_factor(self, code: str) -> Dict[str, Any]:
+        """Authenticate with 2 Factor Code."""
+        two_factor_data = {'corp_id': "1007d2ad150c4000", 'email': self.username,'password': self.password, 'two_factor': code, 'resource':"abcdefghijklmnop"}
+        async with aiohttp.ClientSession() as session:
+            async with session.post(API_2FACTOR_AUTH,json=two_factor_data) as resp:
+                if resp.status == 200:
+                    self.user_credentials = await resp.json()
+                    login_code = bytearray.fromhex('13000000') + (10 + len(self.user_credentials['authorize'])).to_bytes(1,'big') + bytearray.fromhex('03') + self.user_credentials['user_id'].to_bytes(4,'big') + len(self.user_credentials['authorize']).to_bytes(2,'big') + bytearray(self.user_credentials['authorize'],'ascii') + bytearray.fromhex('0000b4')
+                    self.auth_code = [int.from_bytes([byt],'big') for byt in login_code]
+                    return {'authorized':True}
+                else:
+                    return {'authorized':False}
 
 class LostConnection(Exception):
     """Lost connection to Cync Server"""
