@@ -15,16 +15,6 @@ import asyncio
 from .const import DOMAIN
 from .cync_hub import CyncUserData
 
-if sys.platform == 'win32':
-	asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
-# From your original script
-DOMAIN = "cync_lights"  # Assuming this is defined in const.py
-
-_LOGGER = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
-
-
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
