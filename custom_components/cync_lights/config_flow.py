@@ -1,25 +1,27 @@
 """Config flow for Cync Room Lights integration."""
 from __future__ import annotations
 import logging
+from typing import Any, Dict
 import voluptuous as vol
-from typing import Any
+
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
-from homeassistant.core import callback
-from typing import Any, Dict
+from homeassistant.core import HomeAssistant, callback
 import aiohttp
-import sys
 import asyncio
+
 from .const import DOMAIN
 from .cync_hub import CyncUserData
 
+_LOGGER = logging.getLogger(__name__)
 
+# Define schemas for user input
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required("username"): str,
-        vol.Required("password"): str,       
+        vol.Required("password"): str,
     }
 )
 STEP_TWO_FACTOR_CODE = vol.Schema(
@@ -28,229 +30,251 @@ STEP_TWO_FACTOR_CODE = vol.Schema(
     }
 )
 
+# Custom exceptions
 class TwoFactorCodeRequired(HomeAssistantError):
-    pass
+    """Error to indicate two-factor authentication is required."""
 
 class InvalidAuth(HomeAssistantError):
-    pass
+    """Error to indicate there is invalid authentication."""
 
-# These should be standalone functions, not methods of CyncUserData
-async def cync_login(hub, user_input: Dict[str, Any]) -> Dict[str, Any]:
-    _LOGGER.error("Login")
+# Standalone functions for authentication
+async def cync_login(hub: CyncUserData, user_input: Dict[str, Any]) -> Dict[str, Any]:
+    """Attempt to log in with provided credentials."""
+    _LOGGER.debug("Attempting login")
     response = await hub.authenticate(user_input["username"], user_input["password"])
     if response['authorized']:
-        _LOGGER.error("Authorized")
-        _LOGGER.info(hub.access_token)
+        _LOGGER.debug("Successfully authenticated")
         return {
-            'title': 'cync_lights_' + user_input['username'],
+            'title': f'cync_lights_{user_input["username"]}',
             'data': {
                 'cync_credentials': hub.access_token, 
                 'user_input': user_input
             }
         }
+    elif response['two_factor_code_required']:
+        _LOGGER.debug("Two-factor authentication required")
+        raise TwoFactorCodeRequired
     else:
-        if response['two_factor_code_required']:
-            _LOGGER.error("Two Factor")
-            raise TwoFactorCodeRequired
-        else:
-            raise InvalidAuth
+        _LOGGER.debug("Authentication failed")
+        raise InvalidAuth
 
-async def submit_two_factor_code(hub, user_input: Dict[str, Any]) -> Dict[str, Any]:
-    response = await hub.auth_two_factor(user_input["factor_code"])
+async def submit_two_factor_code(hub: CyncUserData, user_input: Dict[str, Any]) -> Dict[str, Any]:
+    """Submit two-factor authentication code."""
+    response = await hub.auth_two_factor(user_input["two_factor_code"])
     if response['authorized']:
         return {
-            'title': 'cync_lights_' + hub.username,
+            'title': f'cync_lights_{hub.username}',
             'data': {
                 'cync_credentials': hub.access_token, 
                 'user_input': {'username': hub.username, 'password': hub.password}
             }
         }
-    else:
-        raise InvalidAuth
+    raise InvalidAuth
 
 class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    def __init__(self):
-        self.cync_hub = CyncUserData()
-        self.data = {}
-        self.options = {}
-        
-        VERSION = 1
+    """Handle the Cync configuration flow."""
 
-    async def async_step_user(self, user_input: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    VERSION = 1
+
+    async def async_step_user(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
+        """Handle the initial step."""
         if user_input is None:
-            return {"type": "form", "step_id": "user", "data_schema": STEP_USER_DATA_SCHEMA}
+            return self.async_show_form(
+                step_id="user", 
+                data_schema=STEP_USER_DATA_SCHEMA,
+                errors={},
+                type="form"
+            )
         
         errors = {}
-        
         try:
-            _LOGGER.error("Login")
-            info = await cync_login(self.cync_hub, user_input)
-            info["data"]["cync_config"] = await self.cync_hub.get_cync_config()
+            info = await cync_login(CyncUserData(), user_input)
+            info["data"]["cync_config"] = await CyncUserData().get_cync_config()
         except TwoFactorCodeRequired:
-            _LOGGER.error("2FA")
             return await self.async_step_two_factor_code()
         except InvalidAuth:
-            _LOGGER.error("Invalid Auth")
             errors["base"] = "invalid_auth"
         except Exception as e:
-            _LOGGER.error(f"Error during login: {str(type(e).__name__)} - {str(e)}")
+            _LOGGER.error(f"Unexpected error during login: {e}")
             errors["base"] = "unknown"
         else:
-            self.data = info
-            return await self._async_finish_setup()
-        
-        return {"type": "form", "step_id": "user", "data_schema": STEP_USER_DATA_SCHEMA, "errors": errors}
+            return await self._async_finish_setup(info)
 
-    async def async_step_two_factor_code(self, user_input: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        return self.async_show_form(
+            step_id="user", 
+            data_schema=STEP_USER_DATA_SCHEMA, 
+            errors=errors,
+            type="form"
+        )
+
+    async def async_step_two_factor_code(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
+        """Handle the two-factor authentication step."""
         if user_input is None:
-            return {"type": "form", "step_id": "two_factor_code", "data_schema": STEP_TWO_FACTOR_CODE}
+            return self.async_show_form(
+                step_id="two_factor_code", 
+                data_schema=STEP_TWO_FACTOR_CODE,
+                errors={},
+                type="form"
+            )
         
         errors = {}
-        
         try:
             info = await submit_two_factor_code(self.cync_hub, user_input)
             info["data"]["cync_config"] = await self.cync_hub.get_cync_config()
         except InvalidAuth:
             errors["base"] = "invalid_auth"
         except Exception as e:
-            _LOGGER.error(f"Error during two factor authentication: {str(type(e).__name__)} - {str(e)}")
+            _LOGGER.error(f"Unexpected error during 2FA: {e}")
             errors["base"] = "unknown"
         else:
-            self.data = info
-            return await self.async_step_select_switches()
-        
-        return {"type": "form", "step_id": "two_factor_code", "data_schema": STEP_TWO_FACTOR_CODE, "errors": errors}
+            return await self._async_finish_setup(info)
 
-    async def async_step_select_switches(self, user_input: Dict[str, Any] | None = None) -> Dict[str, Any]:
-        if user_input is not None:
-            self.options = user_input
-            return await self._async_finish_setup()
-        
-        switches_data_schema = vol.Schema(
-            {
-                vol.Optional("devices", description={"suggested_value": ["device1", "device2"]}):
-                    cv.multi_select(["device1", "device2", "device3"])
-            }
+        return self.async_show_form(
+            step_id="two_factor_code", 
+            data_schema=STEP_TWO_FACTOR_CODE, 
+            errors=errors,
+            type="form"
         )
-        return {"type": "form", "step_id": "select_switches", "data_schema": switches_data_schema}
 
-    async def _async_finish_setup(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        existing_entry = await self.async_set_unique_id(self.data['title'])
-        
-        if not existing_entry:
-            return {
-                "type": "create_entry",
-                "title": self.data["title"],
-                "data": self.data["data"],
-                "options": self.options
-            }
-        else:
-            self.hass.config_entries.async_update_entry(existing_entry, data=self.data['data'], options=self.options)
-            await self.hass.config_entries.async_reload(existing_entry.entry_id)
-            return {
-                "type": "abort",
-                "reason": "reauth_successful"
-            }
+    async def _async_finish_setup(self, info: Dict[str, Any]) -> FlowResult:
+        """Finish setup with the provided information."""
+        await self.async_set_unique_id(info['title'])
+        self._abort_if_unique_id_configured()
+
+        return self.async_create_entry(
+            title=info['title'],
+            data=info['data'],
+            options={}
+        )
 
 class CyncOptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle Cync options flow."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
-        self.entry = config_entry
-        self.cync_hub = CyncUserData()
-        self.data = {}
+        self.config_entry = config_entry
+        self.cync_hub = CyncUserData(config_entry.data['user_input'])
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Handle the initial step of options flow."""
         if user_input is not None:
             if user_input['re-authenticate'] == "No":
                 return await self.async_step_select_switches()
             else:
                 return await self.async_step_auth()
-    
-        data_schema = vol.Schema(
-            {
-                vol.Required("re-authenticate", default="No"): vol.In(["Yes","No"]),
-            }
+        
+        return self.async_show_form(
+            step_id="init", 
+            data_schema=vol.Schema({
+                vol.Required("re-authenticate", default="No"): vol.In(["Yes", "No"]),
+            }),
+            errors={},
+            type="form"
         )
-    
-        return {"type": "form", "step_id": "init", "data_schema": data_schema}
 
     async def async_step_auth(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Handle authentication for options re-authentication."""
         errors = {}
-    
         try:
-            _LOGGER.error("Login")
-            info = await cync_login(self.cync_hub, self.entry.data['user_input'])
+            info = await cync_login(self.cync_hub, self.config_entry.data['user_input'])
             info["data"]["cync_config"] = await self.cync_hub.get_cync_config()
         except TwoFactorCodeRequired:
             return await self.async_step_two_factor_code()
         except InvalidAuth:
             errors["base"] = "invalid_auth"
         except Exception as e:
-            _LOGGER.error(str(type(e).__name__) + ": " + str(e))
+            _LOGGER.error(f"Unexpected error during re-authentication: {e}")
             errors["base"] = "unknown"
         else:
-            self.data = info
+            self.hass.config_entries.async_update_entry(self.config_entry, data=info['data'])
             return await self.async_step_select_switches()
-    
-        # Correction here:
-        return {"type": "form", "step_id": "user", "data_schema": STEP_USER_DATA_SCHEMA, "errors": errors}
+
+        return self.async_show_form(
+            step_id="user", 
+            data_schema=STEP_USER_DATA_SCHEMA, 
+            errors=errors,
+            type="form"
+        )
 
     async def async_step_two_factor_code(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Handle two-factor authentication in options flow."""
         if user_input is None:
-            return {"type": "form", "step_id": "two_factor_code", "data_schema": STEP_TWO_FACTOR_CODE}
-    
+            return self.async_show_form(
+                step_id="two_factor_code", 
+                data_schema=STEP_TWO_FACTOR_CODE,
+                errors={},
+                type="form"
+            )
+        
         errors = {}
-    
         try:
             info = await submit_two_factor_code(self.cync_hub, user_input)
             info["data"]["cync_config"] = await self.cync_hub.get_cync_config()
         except InvalidAuth:
             errors["base"] = "invalid_auth"
         except Exception as e:
-            _LOGGER.error(str(type(e).__name__) + ": " + str(e))
+            _LOGGER.error(f"Unexpected error during 2FA in options: {e}")
             errors["base"] = "unknown"
         else:
-            self.data = info
+            self.hass.config_entries.async_update_entry(self.config_entry, data=info['data'])
             return await self.async_step_select_switches()
-    
-        return {"type": "form", "step_id": "two_factor_code", "data_schema": STEP_TWO_FACTOR_CODE, "errors": errors}
 
-    async def async_step_select_switches(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        if "data" in self.data and self.data["data"] != self.entry.data:
-            self.hass.config_entries.async_update_entry(self.entry, data=self.data["data"])
-    
-        if user_input is not None:
-            return {"type": "create_entry", "title": "", "data": user_input}
-            switches_data_schema = vol.Schema(
-                {
-                    vol.Optional(
-                        "rooms",
-                        description = {"suggested_value" : [room for room in self.entry.options["rooms"] if room in self.entry.data["cync_config"]["rooms"].keys()]},
-                    ): cv.multi_select({room : f'{room_info["name"]} ({room_info["home_name"]})' for room,room_info in self.entry.data["cync_config"]["rooms"].items() if not self.data["data"]["cync_config"]["rooms"][room]['isSubgroup']}),
-                    vol.Optional(
-                        "subgroups",
-                        description = {"suggested_value" : [room for room in self.entry.options["subgroups"] if room in self.entry.data["cync_config"]["rooms"].keys()]},
-                    ): cv.multi_select({room : f'{room_info["name"]} ({room_info.get("parent_room","")}:{room_info["home_name"]})' for room,room_info in self.entry.data["cync_config"]["rooms"].items() if self.data["data"]["cync_config"]["rooms"][room]['isSubgroup']}),
-                    vol.Optional(
-                        "switches",
-                        description = {"suggested_value" : [sw for sw in self.entry.options["switches"] if sw in self.entry.data["cync_config"]["devices"].keys()]},
-                    ): cv.multi_select({switch_id : f'{sw_info["name"]} ({sw_info["room_name"]}:{sw_info["home_name"]})' for switch_id,sw_info in self.entry.data["cync_config"]["devices"].items() if sw_info.get('ONOFF',False) and sw_info.get('MULTIELEMENT',1) == 1}),
-                    vol.Optional(
-                        "motion_sensors",
-                        description = {"suggested_value" : [sensor for sensor in self.entry.options["motion_sensors"] if sensor in self.entry.data["cync_config"]["devices"].keys()]},
-                    ): cv.multi_select({device_id : f'{device_info["name"]} ({device_info["room_name"]}:{device_info["home_name"]})' for device_id,device_info in self.entry.data["cync_config"]["devices"].items() if device_info.get('MOTION',False)}),
-                    vol.Optional(
-                        "ambient_light_sensors",
-                        description = {"suggested_value" : [sensor for sensor in self.entry.options["ambient_light_sensors"] if sensor in self.entry.data["cync_config"]["devices"].keys()]},
-                    ): cv.multi_select({device_id : f'{device_info["name"]} ({device_info["room_name"]}:{device_info["home_name"]})' for device_id,device_info in self.entry.data["cync_config"]["devices"].items() if device_info.get('AMBIENT_LIGHT',False)}),
-                }
+        return self.async_show_form(
+            step_id="two_factor_code", 
+            data_schema=STEP_TWO_FACTOR_CODE, 
+            errors=errors,
+            type="form"
         )
 
-        return {"type": "form", "step_id": "select_switches", "data_schema": switches_data_schema}
+    async def async_step_select_switches(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Handle device selection in options flow."""
+        if user_input is not None:
+            # Update the config entry with the new selections
+            self.hass.config_entries.async_update_entry(self.config_entry, options=user_input)
+            return self.async_create_entry(title="", data=user_input)
 
-class TwoFactorCodeRequired(HomeAssistantError):
-    """Error to indicate we cannot connect."""
+        # Generate the schema for device selection based on the current configuration
+        cync_config = self.config_entry.data.get('cync_config', {})
+        rooms = {
+            room: f"{info['name']} ({info['home_name']})"
+            for room, info in cync_config.get('rooms', {}).items() 
+            if not info.get('isSubgroup', False)
+        }
+        subgroups = {
+            room: f"{info['name']} ({info.get('parent_room', '')}:{info['home_name']})"
+            for room, info in cync_config.get('rooms', {}).items() 
+            if info.get('isSubgroup', False)
+        }
+        switches = {
+            switch_id: f"{info['name']} ({info['room_name']}:{info['home_name']})"
+            for switch_id, info in cync_config.get('devices', {}).items() 
+            if info.get('ONOFF', False) and info.get('MULTIELEMENT', 1) == 1
+        }
+        motion_sensors = {
+            device_id: f"{info['name']} ({info['room_name']}:{info['home_name']})"
+            for device_id, info in cync_config.get('devices', {}).items() 
+            if info.get('MOTION', False)
+        }
+        ambient_light_sensors = {
+            device_id: f"{info['name']} ({info['room_name']}:{info['home_name']})"
+            for device_id, info in cync_config.get('devices', {}).items() 
+            if info.get('AMBIENT_LIGHT', False)
+        }
 
-class InvalidAuth(HomeAssistantError):
-    """Error to indicate there is invalid auth."""
+        # Current options for pre-selecting values
+        current_options = self.config_entry.options
+
+        switches_data_schema = vol.Schema({
+            vol.Optional("rooms", description={"suggested_value": current_options.get("rooms", [])}): cv.multi_select(rooms),
+            vol.Optional("subgroups", description={"suggested_value": current_options.get("subgroups", [])}): cv.multi_select(subgroups),
+            vol.Optional("switches", description={"suggested_value": current_options.get("switches", [])}): cv.multi_select(switches),
+            vol.Optional("motion_sensors", description={"suggested_value": current_options.get("motion_sensors", [])}): cv.multi_select(motion_sensors),
+            vol.Optional("ambient_light_sensors", description={"suggested_value": current_options.get("ambient_light_sensors", [])}): cv.multi_select(ambient_light_sensors),
+        })
+
+        return self.async_show_form(
+            step_id="select_switches", 
+            data_schema=switches_data_schema,
+            errors={},
+            type="form"
+        )
