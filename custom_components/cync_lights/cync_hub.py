@@ -62,8 +62,19 @@ class CyncHub:
             for device_id, device_info in self.user_data.get('cync_config', {}).get('devices', {}).items()
             if device_info.get("MOTION", False)
         }
-        self.cync_ambient_light_sensors = {device_id:CyncAmbientLightSensor(device_id,device_info,self.cync_rooms.get(device_info['room'], None)) for device_id,device_info in user_data['cync_config']['devices'].items() if device_info.get("AMBIENT_LIGHT",False)}
-        self.switchID_to_deviceIDs = {device_info.switch_id:[dev_id for dev_id, dev_info in self.cync_switches.items() if dev_info.switch_id == device_info.switch_id] for device_id, device_info in self.cync_switches.items() if int(device_info.switch_id) > 0}
+                # For ambient light sensors
+        self.cync_ambient_light_sensors = {
+            device_id: CyncAmbientLightSensor(device_id, device_info, self.cync_rooms.get(device_info.get('room', ''), None))
+            for device_id, device_info in self.user_data.get('cync_config', {}).get('devices', {}).items()
+            if device_info.get("AMBIENT_LIGHT", False)
+        }
+
+        # For switchID to deviceIDs mapping
+        self.switchID_to_deviceIDs = {
+            device_info.switch_id: [dev_id for dev_id, dev_info in self.cync_switches.items() if dev_info.switch_id == device_info.switch_id]
+            for device_id, device_info in self.cync_switches.items()
+            if int(getattr(device_info, 'switch_id', 0)) > 0  # Use getattr for safer attribute access
+        }
         self.connected_devices_updated = False
         self.options = options
         self._seq_num = 0
