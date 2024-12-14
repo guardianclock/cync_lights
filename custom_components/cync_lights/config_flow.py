@@ -179,6 +179,7 @@ class CyncOptionsFlowHandler(config_entries.OptionsFlow):
         errors = {}
 
         try:
+            _LOGGER.error("Login")
             info = await cync_login(self.cync_hub, self.entry.data['user_input'])
             info["data"]["cync_config"] = await self.cync_hub.get_cync_config()
         except TwoFactorCodeRequired:
