@@ -84,7 +84,7 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     
         try:
             _LOGGER.error("Login")
-            info = await cync_login(self.cync_hub, user_input)
+            #info = await cync_login(self.cync_hub, user_input)
             info["data"]["cync_config"] = await self.cync_hub.get_cync_config()
         except TwoFactorCodeRequired:
             _LOGGER.error("2FA")
