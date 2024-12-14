@@ -37,7 +37,7 @@ class CyncHub:
         self.loop = None
         self.reader = None
         self.writer = None
-        self.login_code = bytearray(user_data['auth_code'])
+        self.login_code = bytearray(user_data['access_token'])
         self.logged_in = False
         self.home_devices = user_data['cync_config']['home_devices']
         self.home_controllers = user_data['cync_config']['home_controllers']
@@ -784,7 +784,7 @@ class CyncUserData:
 
     async def _get_homes(self):
         """Get a list of devices for a particular user."""
-        headers = {'Access-Token': self.user_credentials['auth_code']}
+        headers = {'Access-Token': self.user_credentials['access_token']}
         async with aiohttp.ClientSession() as session:
             async with session.get(API_DEVICES.format(user=self.user_credentials['user_id']), headers=headers) as resp:
                 _LOGGER.info (f"Getting homes for {self.user_credentials['user_id']}")
@@ -798,7 +798,7 @@ class CyncUserData:
         _LOGGER.info(f"Getting properties for ")
         url = API_DEVICE_INFO
         _LOGGER.debug(f"Requesting URL: {url}")
-        headers = {'Access-Token': self.user_credentials['auth_code']}
+        headers = {'Access-Token': self.user_credentials['access_token']}
         _LOGGER.debug(f"Using headers: {headers}")
 
         async with aiohttp.ClientSession() as session:
@@ -823,7 +823,7 @@ class CyncUserData:
                 if resp.status == 200:
                     self.user_credentials = await resp.json()
                     login_code = bytearray.fromhex('13000000') + (10 + len(self.user_credentials['authorize'])).to_bytes(1,'big') + bytearray.fromhex('03') + self.user_credentials['user_id'].to_bytes(4,'big') + len(self.user_credentials['authorize']).to_bytes(2,'big') + bytearray(self.user_credentials['authorize'],'ascii') + bytearray.fromhex('0000b4')
-                    self.auth_code = [int.from_bytes([byt],'big') for byt in login_code]
+                    self.access_token = [int.from_bytes([byt],'big') for byt in login_code]
                     return {'authorized': True}
                 elif resp.status == 400:
                     request_code_data = {'corp_id': "1007d2ad150c4000", 'email': self.username, 'local_lang': "en-us"}
@@ -843,7 +843,7 @@ class CyncUserData:
                 if resp.status == 200:
                     self.user_credentials = await resp.json()
                     login_code = bytearray.fromhex('13000000') + (10 + len(self.user_credentials['authorize'])).to_bytes(1,'big') + bytearray.fromhex('03') + self.user_credentials['user_id'].to_bytes(4,'big') + len(self.user_credentials['authorize']).to_bytes(2,'big') + bytearray(self.user_credentials['authorize'],'ascii') + bytearray.fromhex('0000b4')
-                    self.auth_code = [int.from_bytes([byt],'big') for byt in login_code]
+                    self.access_token = [int.from_bytes([byt],'big') for byt in login_code]
                     return {'authorized':True}
                 else:
                     return {'authorized':False}
