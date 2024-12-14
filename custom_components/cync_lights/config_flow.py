@@ -82,8 +82,7 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_show_form(
                 step_id="user", 
                 data_schema=STEP_USER_DATA_SCHEMA,
-                errors={},
-                type="form"
+                errors={}
             )
         
         errors = {}
@@ -103,8 +102,7 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user", 
             data_schema=STEP_USER_DATA_SCHEMA, 
-            errors=errors,
-            type="form"
+            errors=errors
         )
 
     async def async_step_two_factor_code(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
@@ -113,8 +111,7 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_show_form(
                 step_id="two_factor_code", 
                 data_schema=STEP_TWO_FACTOR_CODE,
-                errors={},
-                type="form"
+                errors={}
             )
         
         errors = {}
@@ -132,8 +129,7 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="two_factor_code", 
             data_schema=STEP_TWO_FACTOR_CODE, 
-            errors=errors,
-            type="form"
+            errors=errors
         )
 
     async def _async_finish_setup(self, info: Dict[str, Any]) -> FlowResult:
@@ -168,8 +164,7 @@ class CyncOptionsFlowHandler(config_entries.OptionsFlow):
             data_schema=vol.Schema({
                 vol.Required("re-authenticate", default="No"): vol.In(["Yes", "No"]),
             }),
-            errors={},
-            type="form"
+            errors={}
         )
 
     async def async_step_auth(self, user_input: dict[str, Any] | None = None) -> FlowResult:
@@ -192,8 +187,7 @@ class CyncOptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="user", 
             data_schema=STEP_USER_DATA_SCHEMA, 
-            errors=errors,
-            type="form"
+            errors=errors
         )
 
     async def async_step_two_factor_code(self, user_input: dict[str, Any] | None = None) -> FlowResult:
@@ -202,8 +196,7 @@ class CyncOptionsFlowHandler(config_entries.OptionsFlow):
             return self.async_show_form(
                 step_id="two_factor_code", 
                 data_schema=STEP_TWO_FACTOR_CODE,
-                errors={},
-                type="form"
+                errors={}
             )
         
         errors = {}
@@ -222,8 +215,7 @@ class CyncOptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="two_factor_code", 
             data_schema=STEP_TWO_FACTOR_CODE, 
-            errors=errors,
-            type="form"
+            errors=errors
         )
 
     async def async_step_select_switches(self, user_input: dict[str, Any] | None = None) -> FlowResult:
@@ -275,6 +267,5 @@ class CyncOptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="select_switches", 
             data_schema=switches_data_schema,
-            errors={},
-            type="form"
+            errors={}
         )
