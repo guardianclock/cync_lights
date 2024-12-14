@@ -47,7 +47,7 @@ async def cync_login(hub: CyncUserData, user_input: Dict[str, Any]) -> Dict[str,
         return {
             'title': f'cync_lights_{user_input["username"]}',
             'data': {
-                'cync_credentials': hub.access_token, 
+                'cync_credentials': hub.login_code, 
                 'user_input': user_input
             }
         }
@@ -65,7 +65,7 @@ async def submit_two_factor_code(hub: CyncUserData, user_input: Dict[str, Any]) 
         return {
             'title': f'cync_lights_{hub.username}',
             'data': {
-                'cync_credentials': hub.access_token, 
+                'cync_credentials': hub.login_code, 
                 'user_input': {'username': hub.username, 'password': hub.password}
             }
         }
