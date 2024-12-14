@@ -91,7 +91,7 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         
         errors = {}
         try:
-            info = await cync_login(self.sync_hub, user_input)
+            info = await cync_login(self.cync_hub, user_input)
             info["data"]["cync_config"] = await CyncUserData().get_cync_config()
         except TwoFactorCodeRequired:
             return await self.async_step_two_factor_code()
