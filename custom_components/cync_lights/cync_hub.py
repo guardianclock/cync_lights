@@ -1,4 +1,4 @@
-import logging
+.import logging
 import threading
 import asyncio
 import struct
@@ -41,7 +41,7 @@ class CyncHub:
         self.home_devices = user_data.get('cync_config', {}).get('home_devices', {})
         self.home_controllers = user_data.get('cync_config', {}).get('home_controllers', {})
         self.switchID_to_homeID = user_data.get('cync_config', {}).get('switchID_to_homeID', {})
-        
+        self.user_data = user_data
         self.login_code = bytearray(user_data.get('cync_credentials', b''))
         self.logged_in = False
 
