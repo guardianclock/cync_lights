@@ -96,6 +96,7 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_two_factor_code(self, user_input: Dict[str, Any] | None = None) -> Dict[str, Any]:
         if user_input is None:
+            # Correct form for showing a step
             return {"type": "form", "step_id": "two_factor_code", "data_schema": STEP_TWO_FACTOR_CODE}
     
         errors = {}
@@ -103,14 +104,16 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         try:
             info = await submit_two_factor_code(self.cync_hub, user_input)
             info["data"]["cync_config"] = await self.cync_hub.get_cync_config()
-            self.data = info
-            return await self.async_step_select_switches()
         except InvalidAuth:
             errors["base"] = "invalid_auth"
         except Exception as e:
             _LOGGER.error(f"Error during two factor authentication: {str(type(e).__name__)} - {str(e)}")
             errors["base"] = "unknown"
+        else:
+            self.data = info
+            return await self.async_step_select_switches()
     
+        # Correct form for showing a step with errors
         return {"type": "form", "step_id": "two_factor_code", "data_schema": STEP_TWO_FACTOR_CODE, "errors": errors}
 
     async def async_step_select_switches(self, user_input: Dict[str, Any] | None = None) -> Dict[str, Any]:
