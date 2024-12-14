@@ -75,52 +75,49 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input: Dict[str, Any] | None = None) -> Dict[str, Any]:
         if user_input is None:
-            return {"form": {"step_id": "user", "data_schema": STEP_USER_DATA_SCHEMA}}
-
+            return {"type": "form", "step_id": "user", "data_schema": STEP_USER_DATA_SCHEMA}
+    
         errors = {}
-
+    
         try:
             info = await cync_login(self.cync_hub, user_input)
             info["data"]["cync_config"] = await self.cync_hub.get_cync_config()
+            self.data = info
+            return await self._async_finish_setup()
         except TwoFactorCodeRequired:
-            return await self.async_step_two_factor_code()
+            return {"type": "form", "step_id": "two_factor_code", "data_schema": STEP_TWO_FACTOR_CODE}
         except InvalidAuth:
             errors["base"] = "invalid_auth"
         except Exception as e:
             _LOGGER.error(f"Error during login: {str(type(e).__name__)} - {str(e)}")
             errors["base"] = "unknown"
-        else:
-            self.data = info
-            return await self._async_finish_setup()
-
-        return {"form": {"step_id": "user", "data_schema": STEP_USER_DATA_SCHEMA, "errors": errors}}
+    
+        return {"type": "form", "step_id": "user", "data_schema": STEP_USER_DATA_SCHEMA, "errors": errors}
 
     async def async_step_two_factor_code(self, user_input: Dict[str, Any] | None = None) -> Dict[str, Any]:
         if user_input is None:
-            return {"form": {"step_id": "two_factor_code", "data_schema": STEP_TWO_FACTOR_CODE}}
-
+            return {"type": "form", "step_id": "two_factor_code", "data_schema": STEP_TWO_FACTOR_CODE}
+    
         errors = {}
-
+    
         try:
-            
             info = await submit_two_factor_code(self.cync_hub, user_input)
             info["data"]["cync_config"] = await self.cync_hub.get_cync_config()
+            self.data = info
+            return await self.async_step_select_switches()
         except InvalidAuth:
             errors["base"] = "invalid_auth"
         except Exception as e:
             _LOGGER.error(f"Error during two factor authentication: {str(type(e).__name__)} - {str(e)}")
             errors["base"] = "unknown"
-        else:
-            self.data = info
-            return await self.async_step_select_switches()
-
-        return {"form": {"step_id": "two_factor_code", "data_schema": STEP_TWO_FACTOR_CODE, "errors": errors}}
+    
+        return {"type": "form", "step_id": "two_factor_code", "data_schema": STEP_TWO_FACTOR_CODE, "errors": errors}
 
     async def async_step_select_switches(self, user_input: Dict[str, Any] | None = None) -> Dict[str, Any]:
         if user_input is not None:
             self.options = user_input
             return await self._async_finish_setup()
-
+    
         # Mock selection for debugging
         switches_data_schema = vol.Schema(
             {
@@ -128,7 +125,7 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     cv.multi_select(["device1", "device2", "device3"])
             }
         )
-        return {"form": {"step_id": "select_switches", "data_schema": switches_data_schema}}
+        return {"type": "form", "step_id": "select_switches", "data_schema": switches_data_schema}
 
     async def _async_finish_setup(
         self, user_input: dict[str, Any] | None = None
@@ -136,18 +133,20 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Finish setup and create entry"""
         existing_entry = await self.async_set_unique_id(self.data['title'])
         
-        if not existing_entry:              
-            return self.async_create_entry(title=self.data["title"], data=self.data["data"], options=self.options)
+        if not existing_entry:
+            return {
+                "type": "create_entry",
+                "title": self.data["title"],
+                "data": self.data["data"],
+                "options": self.options
+            }
         else:
             self.hass.config_entries.async_update_entry(existing_entry, data=self.data['data'], options=self.options)
             await self.hass.config_entries.async_reload(existing_entry.entry_id)
-            return self.hass.config_entries.async_abort(reason="reauth_successful")
-
-    @staticmethod
-    @callback
-    def async_get_options_flow(config_entry):
-        """Get the options flow for this handler."""
-        return CyncOptionsFlowHandler(config_entry)
+            return {
+                "type": "abort",
+                "reason": "reauth_successful"
+            }
 
 
 class CyncOptionsFlowHandler(config_entries.OptionsFlow):
