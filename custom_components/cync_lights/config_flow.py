@@ -80,11 +80,14 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
     
         try:
+            _LOGGER.error("Login")
             info = await cync_login(self.cync_hub, user_input)
             info["data"]["cync_config"] = await self.cync_hub.get_cync_config()
         except TwoFactorCodeRequired:
+            _LOGGER.error("2FA")
             return await self.async_step_two_factor_code()
         except InvalidAuth:
+            _LOGGER.error("Invalid Auth")
             errors["base"] = "invalid_auth"
         except Exception as e:
             _LOGGER.error(f"Error during login: {str(type(e).__name__)} - {str(e)}")
