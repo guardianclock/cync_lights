@@ -62,7 +62,7 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle user and password for Cync account."""
         if user_input is None:
             return self.async_show_form(
-                step_id="user", data_schema=STEP_USER_DATA_SCHEMA
+                type="form", step_id="user", data_schema=STEP_USER_DATA_SCHEMA
             )
 
         errors = {}
@@ -82,7 +82,7 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_finish_setup()
 
         return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+            type="form", step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
 
     async def async_step_two_factor_code(
@@ -91,7 +91,7 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle two factor authentication for Cync account."""
         if user_input is None:
             return self.async_show_form(
-                step_id="two_factor_code", data_schema=STEP_TWO_FACTOR_CODE
+                type="form", step_id="two_factor_code", data_schema=STEP_TWO_FACTOR_CODE
             )
 
         errors = {}
@@ -109,7 +109,7 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_select_switches()
 
         return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+            type="form", step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
 
 
@@ -146,7 +146,7 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
         
-        return self.async_show_form(step_id="select_switches", data_schema=switches_data_schema)
+        return self.async_show_form(type="form", step_id="select_switches", data_schema=switches_data_schema)
 
     async def _async_finish_setup(
         self, user_input: dict[str, Any] | None = None
