@@ -1,4 +1,4 @@
-.import logging
+import logging
 import threading
 import asyncio
 import struct
