@@ -207,7 +207,7 @@ class CyncOptionsFlowHandler(config_entries.OptionsFlow):
         errors = {}
 
         try:
-            info = await submit_two_factor_code(self.cync_hub, user_input)
+            #info = await submit_two_factor_code(self.cync_hub, user_input)
             info["data"]["cync_config"] = await self.cync_hub.get_cync_config()
         except InvalidAuth:
             errors["base"] = "invalid_auth"
