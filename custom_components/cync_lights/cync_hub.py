@@ -784,7 +784,7 @@ class CyncUserData:
 
     async def _get_homes(self):
         """Get a list of devices for a particular user."""
-        headers = {'Access-Token': self.user_credentials['access_token']}
+        headers = {'Access-Token': self.user_credentials['auth_code']}
         async with aiohttp.ClientSession() as session:
             async with session.get(API_DEVICES.format(user=self.user_credentials['user_id']), headers=headers) as resp:
                 _LOGGER.info (f"Getting homes for {self.user_credentials['user_id']}")
@@ -798,7 +798,7 @@ class CyncUserData:
         _LOGGER.info(f"Getting properties for ")
         url = API_DEVICE_INFO
         _LOGGER.debug(f"Requesting URL: {url}")
-        headers = {'Access-Token': self.user_credentials['access_token']}
+        headers = {'Access-Token': self.user_credentials['auth_code']}
         _LOGGER.debug(f"Using headers: {headers}")
 
         async with aiohttp.ClientSession() as session:
