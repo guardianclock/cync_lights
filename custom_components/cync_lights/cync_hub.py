@@ -37,11 +37,14 @@ class CyncHub:
         self.loop = None
         self.reader = None
         self.writer = None
+        
+        self.home_devices = user_data.get('cync_config', {}).get('home_devices', {})
+        self.home_controllers = user_data.get('cync_config', {}).get('home_controllers', {})
+        self.switchID_to_homeID = user_data.get('cync_config', {}).get('switchID_to_homeID', {})
+        
         self.login_code = bytearray(user_data.get('cync_credentials', b''))
         self.logged_in = False
-        self.home_devices = user_data['cync_config']['home_devices']
-        self.home_controllers = user_data['cync_config']['home_controllers']
-        self.switchID_to_homeID = user_data['cync_config']['switchID_to_homeID']
+
         self.connected_devices = {home_id:[] for home_id in self.home_controllers.keys()}
         self.shutting_down = False
         self.remove_options_update_listener = remove_options_update_listener
