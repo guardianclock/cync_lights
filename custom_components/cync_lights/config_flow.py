@@ -85,7 +85,7 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self.data = info
             return await self._async_finish_setup()
         except TwoFactorCodeRequired:
-            return {"type": "form", "step_id": "two_factor_code", "data_schema": STEP_TWO_FACTOR_CODE}
+            return {"type": "form", "step_id": "step_two_factor_code", "data_schema": STEP_TWO_FACTOR_CODE}
         except InvalidAuth:
             errors["base"] = "invalid_auth"
         except Exception as e:
