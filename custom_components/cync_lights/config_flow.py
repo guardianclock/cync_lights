@@ -76,6 +76,10 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    def __init__(self):
+        super().__init__()
+        self.cync_hub = CyncUserData() 
+
     async def async_step_user(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Handle the initial step."""
         if user_input is None:
