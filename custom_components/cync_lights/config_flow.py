@@ -140,10 +140,13 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Finish setup with the provided information."""
         await self.async_set_unique_id(info['title'])
         self._abort_if_unique_id_configured()
-
+    
         return self.async_create_entry(
             title=info['title'],
-            data=info['data'],
+            data={
+                'user_input': info['data']['user_input'],  # Assuming user_input is how you store login info
+                'cync_credentials': info['data']['cync_credentials']  # Store the access token here
+            },
             options={}
         )
 
