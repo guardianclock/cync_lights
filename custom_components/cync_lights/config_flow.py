@@ -36,8 +36,10 @@ class InvalidAuth(HomeAssistantError):
 
 # These should be standalone functions, not methods of CyncUserData
 async def cync_login(hub, user_input: Dict[str, Any]) -> Dict[str, Any]:
+    _LOGGER.error("Login")
     response = await hub.authenticate(user_input["username"], user_input["password"])
     if response['authorized']:
+        _LOGGER.error("Authorized")
         _LOGGER.info(hub.access_token)
         return {
             'title': 'cync_lights_' + user_input['username'],
@@ -48,6 +50,7 @@ async def cync_login(hub, user_input: Dict[str, Any]) -> Dict[str, Any]:
         }
     else:
         if response['two_factor_code_required']:
+            _LOGGER.error("Two Factor")
             raise TwoFactorCodeRequired
         else:
             raise InvalidAuth
