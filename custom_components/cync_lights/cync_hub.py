@@ -6,7 +6,7 @@ import aiohttp
 import math
 import ssl
 from typing import Any, Dict
-# tdas
+# tda
 _LOGGER = logging.getLogger(__name__)
 
 # From your original script
