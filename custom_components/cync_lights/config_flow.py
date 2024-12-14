@@ -1,4 +1,4 @@
-"""Config flow for Cync Room Lights integration."""
+"""Config flow for Cync Room Lights integration.."""
 from __future__ import annotations
 import logging
 from typing import Any, Dict
