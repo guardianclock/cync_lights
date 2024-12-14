@@ -85,7 +85,7 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         try:
             _LOGGER.error("Login")
             #info = await cync_login(self.cync_hub, user_input)
-            info["data"]["cync_config"] = await self.cync_hub.get_cync_config()
+            #info["data"]["cync_config"] = await self.cync_hub.get_cync_config()
         except TwoFactorCodeRequired:
             _LOGGER.error("2FA")
             return await self.async_step_two_factor_code()
@@ -183,8 +183,8 @@ class CyncOptionsFlowHandler(config_entries.OptionsFlow):
 
         try:
             _LOGGER.error("Login")
-            info = await cync_login(self.cync_hub, self.entry.data['user_input'])
-            info["data"]["cync_config"] = await self.cync_hub.get_cync_config()
+            #info = await cync_login(self.cync_hub, self.entry.data['user_input'])
+            #info["data"]["cync_config"] = await self.cync_hub.get_cync_config()
         except TwoFactorCodeRequired:
             return await self.async_step_two_factor_code()
         except InvalidAuth:
@@ -208,7 +208,7 @@ class CyncOptionsFlowHandler(config_entries.OptionsFlow):
 
         try:
             #info = await submit_two_factor_code(self.cync_hub, user_input)
-            info["data"]["cync_config"] = await self.cync_hub.get_cync_config()
+            #info["data"]["cync_config"] = await self.cync_hub.get_cync_config()
         except InvalidAuth:
             errors["base"] = "invalid_auth"
         except Exception as e:
