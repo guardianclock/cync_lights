@@ -37,7 +37,7 @@ class CyncHub:
         self.loop = None
         self.reader = None
         self.writer = None
-        self.login_code = bytearray(user_data['cync_credentials'])
+        self.login_code = bytearray(user_data['auth_code'])
         self.logged_in = False
         self.home_devices = user_data['cync_config']['home_devices']
         self.home_controllers = user_data['cync_config']['home_controllers']
