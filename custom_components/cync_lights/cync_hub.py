@@ -49,8 +49,19 @@ class CyncHub:
         self.shutting_down = False
         self.remove_options_update_listener = remove_options_update_listener
         self.cync_rooms = {room_id:CyncRoom(room_id,room_info,self) for room_id,room_info in self.user_data.get('cync_config', {}).get('rooms', {}).items()}
-        self.cync_switches = {device_id:CyncSwitch(device_id,switch_info,self.cync_rooms.get(switch_info['room'], None),self) for device_id,switch_info in user_data['cync_config']['devices'].items() if switch_info.get("ONOFF",False)}
-        self.cync_motion_sensors = {device_id:CyncMotionSensor(device_id,device_info,self.cync_rooms.get(device_info['room'], None)) for device_id,device_info in user_data['cync_config']['devices'].items() if device_info.get("MOTION",False)}
+        # For switches
+        self.cync_switches = {
+            device_id: CyncSwitch(device_id, switch_info, self.cync_rooms.get(switch_info.get('room', ''), None), self)
+            for device_id, switch_info in self.user_data.get('cync_config', {}).get('devices', {}).items()
+            if switch_info.get("ONOFF", False)
+        }
+
+        # For motion sensors
+        self.cync_motion_sensors = {
+            device_id: CyncMotionSensor(device_id, device_info, self.cync_rooms.get(device_info.get('room', ''), None))
+            for device_id, device_info in self.user_data.get('cync_config', {}).get('devices', {}).items()
+            if device_info.get("MOTION", False)
+        }
         self.cync_ambient_light_sensors = {device_id:CyncAmbientLightSensor(device_id,device_info,self.cync_rooms.get(device_info['room'], None)) for device_id,device_info in user_data['cync_config']['devices'].items() if device_info.get("AMBIENT_LIGHT",False)}
         self.switchID_to_deviceIDs = {device_info.switch_id:[dev_id for dev_id, dev_info in self.cync_switches.items() if dev_info.switch_id == device_info.switch_id] for device_id, device_info in self.cync_switches.items() if int(device_info.switch_id) > 0}
         self.connected_devices_updated = False
