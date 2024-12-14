@@ -75,6 +75,7 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input: Dict[str, Any] | None = None) -> Dict[str, Any]:
         if user_input is None:
+            # Correct form for showing a step
             return {"type": "form", "step_id": "user", "data_schema": STEP_USER_DATA_SCHEMA}
     
         errors = {}
@@ -82,16 +83,19 @@ class CyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         try:
             info = await cync_login(self.cync_hub, user_input)
             info["data"]["cync_config"] = await self.cync_hub.get_cync_config()
-            self.data = info
-            return await self._async_finish_setup()
         except TwoFactorCodeRequired:
-            return {"type": "form", "step_id": "two_factor_code", "data_schema": STEP_TWO_FACTOR_CODE}
+            # Assuming async_step_two_factor_code returns a dictionary with "type"
+            return await self.async_step_two_factor_code()
         except InvalidAuth:
             errors["base"] = "invalid_auth"
         except Exception as e:
             _LOGGER.error(f"Error during login: {str(type(e).__name__)} - {str(e)}")
             errors["base"] = "unknown"
+        else:
+            self.data = info
+            return await self._async_finish_setup()  # This should also return a dictionary with "type"
     
+        # Correct form for showing a step with errors
         return {"type": "form", "step_id": "user", "data_schema": STEP_USER_DATA_SCHEMA, "errors": errors}
 
     async def async_step_two_factor_code(self, user_input: Dict[str, Any] | None = None) -> Dict[str, Any]:
