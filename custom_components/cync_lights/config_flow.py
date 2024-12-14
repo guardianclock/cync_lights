@@ -188,9 +188,13 @@ class CyncOptionsFlowHandler(config_entries.OptionsFlow):
             _LOGGER.error(f"Unexpected error during re-authentication: {e}")
             errors["base"] = "unknown"
         else:
-            self.hass.config_entries.async_update_entry(self.config_entry, data=info['data'])
+            # Update the config entry with both user input and the new credentials
+            self.hass.config_entries.async_update_entry(self.config_entry, data={
+                'user_input': info['data']['user_input'],
+                'cync_credentials': info['data']['cync_credentials']  # Store the token here
+            })
             return await self.async_step_select_switches()
-
+    
         return self.async_show_form(
             step_id="user", 
             data_schema=STEP_USER_DATA_SCHEMA, 
